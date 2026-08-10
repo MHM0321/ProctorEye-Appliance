@@ -1,0 +1,72 @@
+# ProctorEye appliance — nothing to build, nothing to read. Every service
+# below is `image:` only (prebuilt, published by the vendor) — no `build:`
+# block, so this folder never needs source code, a Dockerfile, or a git
+# clone. Everything here is safe to hand to a customer as-is.
+services:
+  mongo:
+    image: mongo:7
+    restart: unless-stopped
+    volumes:
+      - mongo-data:/data/db
+
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    volumes:
+      - redis-data:/data
+
+  api:
+    image: ${IMAGE_REGISTRY:?set IMAGE_REGISTRY in .env}/proctoreye-api:${IMAGE_TAG:-latest}
+    restart: unless-stopped
+    depends_on:
+      - mongo
+      - redis
+    environment:
+      MONGO_URI: mongodb://mongo:27017/proctoreye
+      REDIS_URL: redis://redis:6379
+      JWT_SECRET: ${JWT_SECRET:?set JWT_SECRET in .env — run install/install first}
+      INTERNAL_API_SECRET: ${INTERNAL_API_SECRET:?set INTERNAL_API_SECRET in .env — run install/install first}
+      CORS_ALLOWED_ORIGINS: ${CORS_ALLOWED_ORIGINS:-}
+      EDITION: selfhosted
+      LICENSE_FILE_PATH: /app/api/license.jwt
+    ports:
+      - "${API_PORT:-4000}:4000"
+    volumes:
+      - api-uploads:/app/api/uploads
+      # Drop a license.jwt (from ProctorEye) next to this compose file to
+      # remove the "unlicensed" watermark and unlock white-labeling —
+      # everything works fully without one too.
+      - ${LICENSE_FILE:-./license.jwt}:/app/api/license.jwt:ro
+
+  worker:
+    image: ${IMAGE_REGISTRY:?set IMAGE_REGISTRY in .env}/proctoreye-worker:${IMAGE_TAG:-latest}
+    restart: unless-stopped
+    depends_on:
+      - mongo
+      - redis
+      - api
+    environment:
+      MONGO_URI: mongodb://mongo:27017/proctoreye
+      REDIS_URL: redis://redis:6379
+      API_BASE_URL: http://api:4000
+      INTERNAL_API_SECRET: ${INTERNAL_API_SECRET:?set INTERNAL_API_SECRET in .env — run install/install first}
+      VLM_FALLBACK_URL: ${VLM_FALLBACK_URL:-}
+    volumes:
+      - api-uploads:/app/api/uploads
+
+  dashboard:
+    image: ${IMAGE_REGISTRY:?set IMAGE_REGISTRY in .env}/proctoreye-dashboard:${IMAGE_TAG:-latest}
+    restart: unless-stopped
+    depends_on:
+      - api
+    environment:
+      # A browser's own address for the API — this machine's real IP/domain,
+      # not "localhost" unless you're only ever testing from this machine.
+      PUBLIC_API_URL: ${PUBLIC_API_URL:?set PUBLIC_API_URL in .env, e.g. http://your-server-address:4000}
+    ports:
+      - "${DASHBOARD_PORT:-8080}:80"
+
+volumes:
+  mongo-data:
+  redis-data:
+  api-uploads:
