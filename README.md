@@ -41,7 +41,7 @@ background regardless. To actually stop it, use **`stop`** (`stop.bat` /
 `./stop.sh`) in the same `run/` folder. Your data isn't touched — `run`
 again any time to pick back up instantly.
 
-## CORS — read this before your exam site stops working
+## CORS — read this before your evaluative site stops working
 
 `CORS_ALLOWED_ORIGINS` in `.env` must list **every origin that calls the API directly from a browser** — that's both your exam site's own domain *and* wherever this dashboard ends up served from. Missing the second one is the most common first-run mistake; it shows up as a "blocked by CORS policy" error in the browser console when logging into the dashboard itself.
 
