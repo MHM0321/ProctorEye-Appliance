@@ -1,0 +1,35 @@
+name: Validate appliance
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  compose:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        platform: [windows, macos, linux]
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Prepare validation environment
+        run: |
+          cp "${{ matrix.platform }}/.env.example" "${{ matrix.platform }}/.env"
+          sed -i 's/^JWT_SECRET=.*/JWT_SECRET=validation-only-jwt-secret/' "${{ matrix.platform }}/.env"
+          sed -i 's/^INTERNAL_API_SECRET=.*/INTERNAL_API_SECRET=validation-only-internal-secret/' "${{ matrix.platform }}/.env"
+
+      - name: Validate Docker Compose
+        run: docker compose --env-file "${{ matrix.platform }}/.env" -f "${{ matrix.platform }}/docker-compose.yml" config --quiet
+
+  scripts:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Validate shell scripts
+        run: bash -n linux/install/install.sh linux/run/run.sh linux/run/stop.sh macos/install/install.sh macos/run/run.sh macos/run/stop.sh
+

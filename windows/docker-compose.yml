@@ -29,6 +29,10 @@ services:
       CORS_ALLOWED_ORIGINS: ${CORS_ALLOWED_ORIGINS:-}
       EDITION: selfhosted
       LICENSE_FILE_PATH: /app/api/license.jwt
+      # Licensing Plan Phase 8 — leave false unless the optional caddy
+      # service below is actually running in front of this. See
+      # .env.example's own comment on TRUST_PROXY before touching this.
+      TRUST_PROXY: ${TRUST_PROXY:-false}
     ports:
       - "${API_PORT:-4000}:4000"
     volumes:
@@ -49,10 +53,14 @@ services:
       MONGO_URI: mongodb://mongo:27017/proctoreye
       REDIS_URL: redis://redis:6379
       API_BASE_URL: http://api:4000
+      EDITION: selfhosted
+      LICENSE_FILE_PATH: /app/api/license.jwt
+      UPLOADS_DIR: /app/api/uploads
       INTERNAL_API_SECRET: ${INTERNAL_API_SECRET:?set INTERNAL_API_SECRET in .env — run install/install first}
       VLM_FALLBACK_URL: ${VLM_FALLBACK_URL:-}
     volumes:
       - api-uploads:/app/api/uploads
+      - ${LICENSE_FILE:-./license.jwt}:/app/api/license.jwt:ro
 
   dashboard:
     image: ${IMAGE_REGISTRY:?set IMAGE_REGISTRY in .env}/proctoreye-dashboard:${IMAGE_TAG:-latest}
@@ -66,7 +74,63 @@ services:
     ports:
       - "${DASHBOARD_PORT:-8080}:80"
 
+  # Licensing Plan Phase 8 — OPTIONAL, off by default (see the `profiles`
+  # line below — Docker Compose only starts a service outside the default
+  # profile when that profile is explicitly turned on, which nothing here
+  # does until you set COMPOSE_PROFILES=tls in .env). Nothing else in this
+  # file changes meaning until you do that: api/dashboard keep working on
+  # their existing plain-HTTP ports exactly as before, for local-machine
+  # testing (browsers treat localhost as a secure context without HTTPS).
+  #
+  # The real, unavoidable reason to ever turn this on: browsers refuse
+  # webcam/screen-share access on a non-HTTPS origin, with NO exception for
+  # a private IP — only localhost is exempt. Any candidate connecting from
+  # a device that ISN'T this same machine needs this (or an equivalent
+  # HTTPS front end) actually running. See README.md's "HTTPS / TLS"
+  # section for the full walkthrough and which TLS_MODE fits your network.
+  caddy:
+    image: caddy:2
+    restart: unless-stopped
+    profiles: ["tls"]
+    depends_on:
+      - api
+      - dashboard
+    ports:
+      - "80:80"
+      - "443:443"
+    environment:
+      # Deliberately a SOFT default (empty), not `:?required` — this
+      # service only actually starts once COMPOSE_PROFILES=tls is set, but
+      # Compose evaluates every ${...} interpolation in the WHOLE file
+      # regardless of which profiles are active (confirmed directly: a
+      # `:?required` here broke `docker compose up` for EVERYONE, even
+      # without the tls profile on, since Compose refuses to even PARSE the
+      # file with a missing required var anywhere in it). An empty DOMAIN
+      # only actually matters at container start, and only once you've
+      # opted into tls — Caddy itself will complain clearly in its own
+      # logs if this is still blank then.
+      DOMAIN: ${DOMAIN:-}
+      CLOUDFLARE_API_TOKEN: ${CLOUDFLARE_API_TOKEN:-}
+    volumes:
+      # Which template gets loaded is just which FILE this points at —
+      # picked by TLS_MODE, no conditional logic inside Caddy's own config
+      # at all. caddy/Caddyfile.dns-01.example is deliberately excluded
+      # from this selection (it can't run against the stock image below —
+      # see that file's own comment); TLS_MODE=dns-01 needs manual setup,
+      # not just an env var flip.
+      - ./caddy/Caddyfile.${TLS_MODE:-letsencrypt}:/etc/caddy/Caddyfile:ro
+      # Only actually read when TLS_MODE=custom-cert — see
+      # caddy/Caddyfile.custom-cert for what goes here.
+      - ./caddy/certs:/certs:ro
+      # Caddy's own certificate storage — MUST persist across restarts, or
+      # letsencrypt mode would re-provision a fresh certificate every
+      # restart and eventually hit Let's Encrypt's own rate limits.
+      - caddy-data:/data
+      - caddy-config:/config
+
 volumes:
   mongo-data:
   redis-data:
   api-uploads:
+  caddy-data:
+  caddy-config:

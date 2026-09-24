@@ -1,0 +1,29 @@
+# TLS_MODE=letsencrypt (the default) — fully automatic HTTPS.
+#
+# Requirements: {$DOMAIN} has a real public DNS A/AAAA record pointing at
+# THIS server, and ports 80+443 are reachable from the internet (Caddy uses
+# 80 for the ACME HTTP-01 challenge, then serves everything on 443). Once
+# that's true, there is nothing else to configure — Caddy provisions the
+# certificate on first start and renews it automatically, forever, with no
+# further action from you.
+#
+# No public domain, or no inbound internet access at all? See
+# Caddyfile.custom-cert or Caddyfile.internal instead — README.md's TLS
+# section walks through picking the right one for your situation.
+{$DOMAIN} {
+	# Never routed anywhere public — worker-to-api-only, guarded separately
+	# by its own shared secret (see api/src/middleware/internalSecret.ts).
+	# This is defense in depth: even a future dashboard misconfiguration
+	# couldn't accidentally expose it through here.
+	handle /internal/* {
+		respond 404
+	}
+
+	handle /v1/* {
+		reverse_proxy api:4000
+	}
+
+	handle {
+		reverse_proxy dashboard:80
+	}
+}

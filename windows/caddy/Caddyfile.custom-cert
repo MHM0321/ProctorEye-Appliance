@@ -1,0 +1,25 @@
+# TLS_MODE=custom-cert — bring your own certificate instead of Caddy
+# provisioning one itself: your institution's own internal CA, or an
+# existing wildcard certificate you already hold. No inbound internet
+# access is needed for this mode at all — good for a server with no public
+# DNS record and no open ports 80/443.
+#
+# Before starting: put your certificate and its private key at
+# ./caddy/certs/cert.pem and ./caddy/certs/key.pem (next to this file) —
+# they're bind-mounted read-only into the container at /certs, see
+# docker-compose.yml's caddy service.
+{$DOMAIN} {
+	tls /certs/cert.pem /certs/key.pem
+
+	handle /internal/* {
+		respond 404
+	}
+
+	handle /v1/* {
+		reverse_proxy api:4000
+	}
+
+	handle {
+		reverse_proxy dashboard:80
+	}
+}

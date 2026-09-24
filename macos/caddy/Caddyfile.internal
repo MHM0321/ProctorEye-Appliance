@@ -1,0 +1,28 @@
+# TLS_MODE=internal — self-signed via Caddy's own built-in CA. No domain,
+# no DNS, no internet access required at all — the right choice for a
+# fully private/air-gapped network where a real public certificate
+# authority can never reach this server.
+#
+# {$DOMAIN} here doesn't need to resolve anywhere public — it can just be
+# this server's hostname or IP, since nothing validates it against a real
+# CA. Every browser that connects will show a certificate-trust warning
+# once; that's expected, not a misconfiguration. Either click through it on
+# each candidate device ahead of time, or distribute Caddy's own root
+# certificate to avoid the warning entirely:
+#   docker compose exec caddy cat /data/caddy/pki/authorities/local/root.crt
+# (install that file as a trusted root CA on each candidate's device).
+{$DOMAIN} {
+	tls internal
+
+	handle /internal/* {
+		respond 404
+	}
+
+	handle /v1/* {
+		reverse_proxy api:4000
+	}
+
+	handle {
+		reverse_proxy dashboard:80
+	}
+}

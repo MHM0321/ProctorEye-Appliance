@@ -1,0 +1,44 @@
+# TLS_MODE=dns-01 — ADVANCED, NOT plug-and-play out of the box. Read this
+# whole comment before using it; README.md's TLS section has the same
+# summary.
+#
+# This mode proves domain ownership via a DNS TXT record instead of an
+# HTTP challenge, so — like custom-cert — it works even with ZERO inbound
+# internet access. Unlike custom-cert, Caddy provisions and renews the
+# certificate itself automatically; you never handle cert files by hand.
+#
+# The catch: this needs a Caddy build that includes a DNS provider module,
+# and the stock `caddy:2` image this appliance ships does NOT include one —
+# keeping this appliance's own "nothing to build" promise (see
+# docker-compose.yml's own top comment) means we can't bundle every
+# provider's module for everyone. To actually use this mode:
+#
+#   1. Get (or build with xcaddy) a Caddy image containing the module for
+#      YOUR DNS provider — see https://caddyserver.com/docs/modules/ for
+#      the growing list (Cloudflare, Route53, DigitalOcean, and dozens
+#      more each have one).
+#   2. In docker-compose.yml, point the caddy service's `image:` at that
+#      image instead of the stock caddy:2.
+#   3. Copy this file's content into a real file named Caddyfile.dns-01,
+#      filling in your own provider's directive + credentials — the block
+#      below is the Cloudflare shape, given here as one concrete, complete
+#      example; swap `dns cloudflare ...` for your own provider's own
+#      directive name and required arguments per its module's own docs.
+#   4. Set TLS_MODE=dns-01 in .env.
+{$DOMAIN} {
+	tls {
+		dns cloudflare {$CLOUDFLARE_API_TOKEN}
+	}
+
+	handle /internal/* {
+		respond 404
+	}
+
+	handle /v1/* {
+		reverse_proxy api:4000
+	}
+
+	handle {
+		reverse_proxy dashboard:80
+	}
+}
